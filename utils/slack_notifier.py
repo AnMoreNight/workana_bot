@@ -208,34 +208,38 @@ class SlackNotifier:
         if url and not url.startswith('http'):
             url = BASE_URL + url
         
-        # Build text with each field on a new line
+        # Build text with each field on a new line (all in one block for consistent spacing)
         text_parts = []
         
-        # Title with link (bold)
-        if url:
-            title_text = f"*<{url}|{title}>*"
-        else:
-            title_text = f"*{title}*"
-        text_parts.append(title_text)
+        # Title (normal text, same font size)
+        text_parts.append(title)
         
         # Country
         if job.get('client_country'):
             text_parts.append(f"Country: {job['client_country']}")
         
-        # Payment verification
-        if job.get('client_payment_verified'):
-            text_parts.append("Payment: ✅ Verified")
+        # Budget with payment status emoji at the end (no separate payment line)
+        budget_raw = job.get('budget')
+        status_emoji = "✅" if job.get('client_payment_verified') else "❌"
+        if budget_raw:
+            # Extract numbers from budget and make them bold
+            import re
+            # Find numbers in the budget string
+            budget_with_bold = re.sub(r'(\d+(?:,\d+)*(?:\.\d+)?)', r'*\1*', budget_raw)
+            text_parts.append(f"Budget: {budget_with_bold} : {status_emoji}")
+        
+        # Divider on same line as budget (no extra spacing)
+        divider_text = "*───────────────────────────────────*"
+        if text_parts:
+            # Add divider to the last line (budget line)
+            text_parts[-1] = f"{text_parts[-1]}\n{divider_text}"
         else:
-            text_parts.append("Payment: ❌ Not Verified")
+            text_parts.append(divider_text)
         
-        # Budget
-        if job.get('budget'):
-            text_parts.append(f"Budget: {job['budget']}")
-        
-        # Join all parts with newlines
+        # Join all parts with single newlines (consistent spacing)
         main_text = "\n".join(text_parts)
         
-        # Create main block
+        # Create main block with all content (one block = consistent spacing)
         main_block = {
             "type": "section",
             "text": {
@@ -244,16 +248,19 @@ class SlackNotifier:
             }
         }
         
-        blocks.append(main_block)
-        
-        # Add bold divider at the bottom to separate from other jobs
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*───────────────────────────────────*"
+        # Add button as accessory (will appear on right side)
+        if url:
+            main_block["accessory"] = {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Open Job"
+                },
+                "url": url,
+                "action_id": "view_job"
             }
-        })
+        
+        blocks.append(main_block)
         
         return blocks
     
@@ -299,19 +306,39 @@ class SlackNotifier:
         # Get timestamp in Tokyo timezone
         timestamp = self._get_tokyo_timestamp()
         
-        # Create blocks with header (using section instead of header type for same font, bold text)
-        blocks = [
-            {
+        # Combine timestamp header with job blocks in one block for consistent spacing
+        blocks = []
+        
+        if job_blocks and len(job_blocks) > 0:
+            # Get the job content from first block
+            first_block = job_blocks[0]
+            job_text = first_block.get("text", {}).get("text", "") if first_block.get("text") else ""
+            
+            # Combine timestamp and job content in one block (no extra spacing)
+            combined_text = f"*🎉 New Job Found 🎉 {timestamp}*\n{job_text}"
+            
+            combined_block = {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": combined_text
+                }
+            }
+            
+            # Add button if it exists in the first block
+            if first_block.get("accessory"):
+                combined_block["accessory"] = first_block["accessory"]
+            
+            blocks.append(combined_block)
+        else:
+            # Fallback: just header
+            blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
                     "text": f"*🎉 New Job Found 🎉 {timestamp}*"
                 }
-            }
-        ]
-        
-        # Add job blocks (already includes divider at bottom)
-        blocks.extend(job_blocks)
+            })
         
         # Get job title for fallback text
         title = job.get('title', 'New Job')
