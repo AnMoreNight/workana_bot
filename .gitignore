@@ -1,0 +1,43 @@
+# Environment variables
+.env
+
+# Google Sheets credentials
+credentials.json
+*-credentials.json
+*service-account*.json
+
+# Database
+*.db
+*.db-journal
+
+# Logs
+*.log
+scraper.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Selenium
+chromedriver
+geckodriver
+

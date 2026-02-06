@@ -1,0 +1,23 @@
+[Unit]
+Description=Workana Job Scraper
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+WorkingDirectory=/opt/workana-scraper
+Environment="PATH=/opt/workana-scraper/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/workana-scraper/venv/bin/python /opt/workana-scraper/main.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/workana-scraper/scraper.log
+StandardError=append:/opt/workana-scraper/scraper.log
+
+# Resource limits (adjust based on your VPS)
+MemoryLimit=2G
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
+
