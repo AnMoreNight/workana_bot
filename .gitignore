@@ -7,7 +7,7 @@ credentials.json
 *service-account*.json
 
 # Database
-*.db
+
 *.db-journal
 
 # Logs
