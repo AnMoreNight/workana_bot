@@ -384,6 +384,44 @@ class WorkanaDatabase:
         
         return stats
     
+    def cleanup_old_jobs(self, keep_count: int = None) -> int:
+        """
+        Remove old jobs, keeping only the most recent ones.
+        
+        Args:
+            keep_count: Number of jobs to keep (defaults to MAX_JOBS_IN_DB)
+        
+        Returns:
+            Number of jobs removed
+        """
+        if keep_count is None:
+            keep_count = MAX_JOBS_IN_DB
+        
+        # Get current count
+        cursor = self.conn.execute('SELECT COUNT(*) FROM jobs')
+        current_count = cursor.fetchone()[0]
+        
+        if current_count <= keep_count:
+            return 0  # No cleanup needed
+        
+        # Calculate how many to remove
+        remove_count = current_count - keep_count
+        
+        # Delete oldest jobs (by scraped_at)
+        cursor = self.conn.execute('''
+            DELETE FROM jobs 
+            WHERE id IN (
+                SELECT id FROM jobs 
+                ORDER BY scraped_at ASC 
+                LIMIT ?
+            )
+        ''', (remove_count,))
+        
+        deleted_count = cursor.rowcount
+        self.conn.commit()
+        
+        return deleted_count
+    
     def close(self):
         """Close database connection"""
         self.conn.close()

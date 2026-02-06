@@ -18,7 +18,7 @@ else:
 
 # Database settings
 DATABASE_PATH = BASE_DIR / 'workana_jobs.db'
-MAX_JOBS_IN_DB = 1000  # Maximum number of jobs to keep in database (oldest jobs are removed when limit is reached)
+MAX_JOBS_IN_DB = 500  # Maximum number of jobs to keep in database (oldest jobs are removed when limit is reached)
 
 # Scraping settings
 BASE_URL = "https://www.workana.com"

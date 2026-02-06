@@ -12,7 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config.settings import (
     DATABASE_PATH, DEFAULT_CATEGORY, DEFAULT_LANGUAGE,
     MAX_PAGES, STOP_ON_KNOWN_JOB, SLACK_WEBHOOK_URL, ENABLE_SLACK_NOTIFICATIONS,
-    SCRAPE_INTERVAL, ENABLE_SHEETS_EXPORT, GOOGLE_SHEETS_SPREADSHEET_ID, GOOGLE_SHEETS_CREDENTIALS_JSON
+    SCRAPE_INTERVAL, ENABLE_SHEETS_EXPORT, GOOGLE_SHEETS_SPREADSHEET_ID, GOOGLE_SHEETS_CREDENTIALS_JSON,
+    MAX_JOBS_IN_DB
 )
 from storage.database import WorkanaDatabase
 from scrapers.workana_scraper import WorkanaScraper
@@ -213,6 +214,13 @@ def main():
     # Initialize database
     print("\n[1/5] Initializing database...")
     db = WorkanaDatabase(str(DATABASE_PATH))
+    
+    # Cleanup old jobs to maintain limit
+    removed_count = db.cleanup_old_jobs()
+    if removed_count > 0:
+        print(f"🗑️  Removed {removed_count} old job(s) to maintain database limit of {MAX_JOBS_IN_DB}")
+    else:
+        print(f"✅ Database has {db.get_statistics()['total_jobs']} job(s) (limit: {MAX_JOBS_IN_DB})")
     
     # Initialize DeepL translator (if configured)
     translator = None
