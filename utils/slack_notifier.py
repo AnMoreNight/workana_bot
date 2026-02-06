@@ -246,9 +246,13 @@ class SlackNotifier:
         
         blocks.append(main_block)
         
-        # Add divider at the bottom to separate from other jobs
+        # Add bold divider at the bottom to separate from other jobs
         blocks.append({
-            "type": "divider"
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*───────────────────────────────────*"
+            }
         })
         
         return blocks
@@ -363,7 +367,11 @@ class SlackNotifier:
                 }
             },
             {
-                "type": "divider"
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*───────────────────────────────────*"
+                }
             }
         ]
         
@@ -371,8 +379,15 @@ class SlackNotifier:
         jobs_to_send = new_jobs[:10]
         for i, job in enumerate(jobs_to_send, 1):
             blocks.append(self.format_job_block(job, index=i))
+            # Add bold divider between jobs (except after the last one)
             if i < len(jobs_to_send):
-                blocks.append({"type": "divider"})
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*───────────────────────────────────*"
+                    }
+                })
         
         # If more than 10 jobs, add note
         if len(new_jobs) > 10:
