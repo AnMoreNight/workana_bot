@@ -96,7 +96,7 @@ class SlackNotifier:
     
     def format_job_block(self, job: Dict, index: int = None) -> Dict:
         """
-        Format a single job as Slack block
+        Format a single job as Slack block (simplified format)
         
         Args:
             job: Job data dictionary
@@ -105,11 +105,8 @@ class SlackNotifier:
         Returns:
             Slack block dictionary
         """
-        # Get original values
-        original_title = job.get('title', 'N/A')
-        original_description = job.get('description', '')
-        
         # Translate title if translator is available
+        original_title = job.get('title', 'N/A')
         title = original_title
         if self.translator and self.translator.is_available():
             try:
@@ -123,104 +120,32 @@ class SlackNotifier:
         if url and not url.startswith('http'):
             url = BASE_URL + url
         
-        # Build job info text
-        info_parts = []
+        # Build text with each field on a new line
+        text_parts = []
         
-        if job.get('posted_date_relative'):
-            info_parts.append(f"*Posted:* {job['posted_date_relative']}")
-        
-        if job.get('budget'):
-            info_parts.append(f"*Budget:* {job['budget']}")
-        
-        if job.get('bids_count') is not None:
-            info_parts.append(f"*Bids:* {job['bids_count']}")
-        
-        # Note: client_country is displayed separately for prominence
-        # if job.get('client_country'):
-        #     info_parts.append(f"*Country:* {job['client_country']}")
-        
-        if job.get('client_rating'):
-            info_parts.append(f"*Client Rating:* {job['client_rating']}/5.0")
-        
-        info_text = " • ".join(info_parts)
-        
-        # Skills
-        skills_text = ""
-        if job.get('skills'):
-            skills = job['skills'] if isinstance(job['skills'], list) else json.loads(job['skills'])
-            if skills:
-                skills_text = f"*Skills:* {', '.join(skills[:5])}"  # Show first 5 skills
-                if len(skills) > 5:
-                    skills_text += f" (+{len(skills) - 5} more)"
-        
-        # Description summary - summarize first, then translate
-        description_summary = ""
-        key_points = []
-        
-        if original_description:
-            # Get summarized description from original
-            summary_data = summarize_job_description(original_description, include_key_points=True)
-            description_summary = summary_data.get('summary', '')
-            key_points = summary_data.get('key_points', [])
-            
-            # Translate summary and key points if translator is available
-            if self.translator and self.translator.is_available():
-                try:
-                    # Translate summary
-                    if description_summary:
-                        translated_summary = self.translator.translate_text(description_summary, target_lang="EN-US")
-                        if translated_summary:
-                            description_summary = translated_summary
-                    
-                    # Translate key points
-                    if key_points:
-                        translated_key_points = []
-                        for point in key_points:
-                            translated_point = self.translator.translate_text(point, target_lang="EN-US")
-                            if translated_point:
-                                translated_key_points.append(translated_point)
-                            else:
-                                translated_key_points.append(point)  # Fallback to original
-                        key_points = translated_key_points
-                except Exception as e:
-                    print(f"⚠️  Warning: Failed to translate description summary: {e}")
-        
-        # Build block with better formatting - use single text field with proper line breaks
-        title_text = f"*{index}. {title}*" if index is not None else f"*{title}*"
-        
-        # Build main text with proper spacing and line breaks
-        text_parts = [title_text]
-        
-        # Add client information on separate lines for prominence
-        client_info_parts = []
-        
-        # Client name
-        if job.get('client_name'):
-            client_info_parts.append(f"👤 *Client:* {job['client_name']}")
+        # Title with link (bold)
+        if url:
+            title_text = f"*<{url}|{title}>*"
+        else:
+            title_text = f"*{title}*"
+        text_parts.append(title_text)
         
         # Country
         if job.get('client_country'):
-            client_info_parts.append(f"🌍 *Country:* {job['client_country']}")
+            text_parts.append(f"Country: {job['client_country']}")
         
-        # Payment verified status
+        # Payment verification
         if job.get('client_payment_verified'):
-            client_info_parts.append("✅ *Payment Verified*")
+            text_parts.append("Payment: ✅ Verified")
         else:
-            client_info_parts.append("❌ *Payment Not Verified*")
+            text_parts.append("Payment: ❌ Not Verified")
         
-        if client_info_parts:
-            text_parts.append("\n".join(client_info_parts))
+        # Budget
+        if job.get('budget'):
+            text_parts.append(f"Budget: {job['budget']}")
         
-        # Add info text with proper spacing
-        if info_text:
-            text_parts.append(info_text)
-        
-        # Add skills with proper spacing
-        if skills_text:
-            text_parts.append(skills_text)
-        
-        # Combine with double line breaks for better separation
-        main_text = "\n\n".join(text_parts)
+        # Join all parts with newlines
+        main_text = "\n".join(text_parts)
         
         # Create main block
         block = {
@@ -230,40 +155,6 @@ class SlackNotifier:
                 "text": main_text
             }
         }
-        
-        # Add description summary as a separate field for better layout
-        if description_summary:
-            # Build description text with proper formatting
-            desc_parts = [f"*Summary:*"]
-            desc_parts.append(description_summary)
-            
-            # Add key points if available
-            if key_points:
-                desc_parts.append("\n*Key Points:*")
-                for point in key_points:
-                    desc_parts.append(f"• {point}")
-            
-            desc_text = "\n".join(desc_parts)
-            
-            # Add as a field (Slack fields are displayed side-by-side, but we'll use it for better spacing)
-            block["fields"] = [
-                {
-                    "type": "mrkdwn",
-                    "text": desc_text
-                }
-            ]
-        
-        # Add accessory (link button)
-        if url:
-            block["accessory"] = {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": "View Job"
-                },
-                "url": url,
-                "action_id": "view_job"
-            }
         
         return block
     
@@ -361,6 +252,28 @@ class SlackNotifier:
         })
         
         return blocks
+    
+    def _get_tokyo_timestamp(self) -> str:
+        """
+        Get current timestamp in Asia/Tokyo timezone formatted as YYYY/MM/DD : HH:MM
+        
+        Returns:
+            Formatted timestamp string
+        """
+        try:
+            if PYTZ_AVAILABLE:
+                tokyo_tz = pytz.timezone('Asia/Tokyo')
+                now_tokyo = datetime.now(tokyo_tz)
+            else:
+                # Fallback: use UTC offset for JST (UTC+9)
+                from datetime import timezone, timedelta
+                jst = timezone(timedelta(hours=9))
+                now_tokyo = datetime.now(jst)
+            
+            return now_tokyo.strftime('%Y/%m/%d : %H:%M')
+        except Exception as e:
+            # Fallback to local time if timezone conversion fails
+            return datetime.now().strftime('%Y/%m/%d : %H:%M')
     
     def send_single_job(self, job: Dict) -> bool:
         """
