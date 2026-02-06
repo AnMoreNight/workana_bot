@@ -26,11 +26,10 @@ JOBS_URL = f"{BASE_URL}/jobs"
 DEFAULT_CATEGORY = "it-programming"
 DEFAULT_LANGUAGE = "en,pt,es"  # English, Portuguese, Spanish
 
-# Selenium settings
+# Playwright settings
 HEADLESS = True  # Set to False for debugging
-IMPLICIT_WAIT = 3  # seconds (reduced from 10)
-PAGE_LOAD_TIMEOUT = 20  # seconds (reduced from 30)
-EXPLICIT_WAIT_TIMEOUT = 5  # seconds (reduced from 10)
+PAGE_LOAD_TIMEOUT = 20000  # milliseconds (20 seconds)
+EXPLICIT_WAIT_TIMEOUT = 5000  # milliseconds (5 seconds)
 
 # Rate limiting (optimized for speed while still being respectful)
 DELAY_BETWEEN_REQUESTS = 1  # seconds (reduced from 3)
@@ -46,21 +45,8 @@ SCRAPE_INTERVAL = 30  # Seconds between scrapes (set to None to run once and exi
 # User agent
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# Chrome options (optimized for speed)
-CHROME_OPTIONS = [
-    '--no-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-blink-features=AutomationControlled',
-    '--disable-extensions',
-    '--disable-gpu',  # Faster in headless
-    '--disable-software-rasterizer',  # Performance
-    '--disable-background-timer-throttling',  # Performance
-    '--disable-backgrounding-occluded-windows',  # Performance
-    '--disable-renderer-backgrounding',  # Performance
-]
-
-if HEADLESS:
-    CHROME_OPTIONS.append('--headless')
+# Browser settings
+BROWSER = "chromium"  # Options: "chromium", "firefox", "webkit"
 
 # Logging
 LOG_LEVEL = "INFO"

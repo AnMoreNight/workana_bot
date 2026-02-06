@@ -1,74 +1,76 @@
 """
-Selenium-based scraper for Workana job listings
+Playwright-based scraper for Workana job listings
 """
 import time
 import random
 from typing import List, Dict, Optional, Set
 from datetime import datetime
 from urllib.parse import quote
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
+from playwright.sync_api import sync_playwright, Browser, Page, TimeoutError as PlaywrightTimeoutError
 
 from config.settings import (
     BASE_URL, JOBS_URL, DEFAULT_CATEGORY, DEFAULT_LANGUAGE,
-    HEADLESS, IMPLICIT_WAIT, PAGE_LOAD_TIMEOUT, EXPLICIT_WAIT_TIMEOUT,
+    HEADLESS, PAGE_LOAD_TIMEOUT, EXPLICIT_WAIT_TIMEOUT,
     DELAY_BETWEEN_REQUESTS, RANDOM_DELAY_RANGE, MAX_PAGES, STOP_ON_KNOWN_JOB,
-    USER_AGENT, CHROME_OPTIONS
+    USER_AGENT, BROWSER
 )
 from config.selectors import SELECTORS
-from parsers.job_parser import parse_job_element, parse_job_element_from_html
+from parsers.job_parser import parse_job_element_from_html
 
 
 class WorkanaScraper:
-    """Selenium-based scraper for Workana job listings"""
+    """Playwright-based scraper for Workana job listings"""
     
     def __init__(self, headless: bool = None):
         self.headless = headless if headless is not None else HEADLESS
-        self.driver = None
-        self.wait = None
+        self.playwright = None
+        self.browser = None
+        self.page = None
         self.base_url = BASE_URL
     
     def setup_driver(self):
-        """Initialize Chrome WebDriver"""
-        chrome_options = Options()
+        """Initialize Playwright browser"""
+        self.playwright = sync_playwright().start()
         
-        # Add options
-        for option in CHROME_OPTIONS:
-            chrome_options.add_argument(option)
+        # Launch browser with options
+        browser_type = getattr(self.playwright, BROWSER)
+        self.browser = browser_type.launch(
+            headless=self.headless,
+            args=[
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-extensions',
+            ] if BROWSER == "chromium" else []
+        )
         
-        # User agent
-        chrome_options.add_argument(f'user-agent={USER_AGENT}')
+        # Create new page/context
+        context = self.browser.new_context(
+            user_agent=USER_AGENT,
+            viewport={'width': 1920, 'height': 1080}
+        )
         
-        # Disable automation flags
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
+        # Block images and fonts for faster loading (but keep CSS and JS)
+        def route_handler(route):
+            resource_type = route.request.resource_type
+            url = route.request.url.lower()
+            # Block images and fonts
+            if resource_type == "image" or any(ext in url for ext in ['.woff', '.woff2', '.ttf', '.eot']):
+                route.abort()
+            else:
+                route.continue_()
         
-        # Performance optimizations - block images to load faster
-        prefs = {
-            "profile.managed_default_content_settings.images": 2,  # Block images
-            "profile.default_content_setting_values.notifications": 2  # Block notifications
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
+        context.route("**/*", route_handler)
         
-        # Initialize driver
-        service = Service(ChromeDriverManager().install())
-        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        self.page = context.new_page()
         
         # Set timeouts
-        self.driver.implicitly_wait(IMPLICIT_WAIT)
-        self.driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
-        
-        # Initialize wait
-        self.wait = WebDriverWait(self.driver, EXPLICIT_WAIT_TIMEOUT)
+        self.page.set_default_timeout(PAGE_LOAD_TIMEOUT)
         
         # Execute script to hide webdriver property
-        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        self.page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+        """)
     
     def build_jobs_url(self, category: str = None, language: str = None, page: int = 1) -> str:
         """Build jobs URL with parameters"""
@@ -87,18 +89,16 @@ class WorkanaScraper:
     def load_page(self, url: str) -> bool:
         """Load a page and wait for jobs to appear"""
         try:
-            self.driver.get(url)
+            self.page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT)
             
-            # Wait for jobs container to load (more efficient wait)
-            self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, SELECTORS['job_container']))
-            )
+            # Wait for jobs container to load
+            self.page.wait_for_selector(SELECTORS['job_container'], timeout=EXPLICIT_WAIT_TIMEOUT)
             
-            # Wait briefly for dynamic content (reduced from 2s to 0.5s)
+            # Wait briefly for dynamic content
             time.sleep(0.5)
             
             return True
-        except TimeoutException:
+        except PlaywrightTimeoutError:
             print(f"Timeout loading page: {url}")
             return False
         except Exception as e:
@@ -108,19 +108,29 @@ class WorkanaScraper:
     def scroll_page(self):
         """Scroll page to trigger lazy loading if needed (optimized)"""
         try:
-            # Quick scroll to bottom and back (reduced delays)
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(0.3)  # Reduced from 1s
-            self.driver.execute_script("window.scrollTo(0, 0);")
-            time.sleep(0.2)  # Reduced from 1s
+            # Quick scroll to bottom and back
+            self.page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(0.3)
+            self.page.evaluate("window.scrollTo(0, 0);")
+            time.sleep(0.2)
         except:
             pass
     
     def get_job_elements(self) -> List:
-        """Get all job elements from current page"""
+        """Get all job elements from current page as HTML strings"""
         try:
-            job_elements = self.driver.find_elements(By.CSS_SELECTOR, SELECTORS['job_item'])
-            return job_elements
+            # Get all job elements and extract their outerHTML immediately
+            job_elements = self.page.query_selector_all(SELECTORS['job_item'])
+            # Convert to HTML strings immediately to avoid stale references
+            job_htmls = []
+            for element in job_elements:
+                try:
+                    # Get the full outerHTML of the element
+                    html = element.evaluate("element => element.outerHTML")
+                    job_htmls.append(html)
+                except:
+                    continue
+            return job_htmls
         except Exception as e:
             print(f"Error getting job elements: {e}")
             return []
@@ -128,8 +138,11 @@ class WorkanaScraper:
     def get_total_pages(self) -> Optional[int]:
         """Get total number of pages from pagination"""
         try:
-            pagination = self.driver.find_element(By.CSS_SELECTOR, SELECTORS['pagination'])
-            page_links = pagination.find_elements(By.CSS_SELECTOR, SELECTORS['pagination_pages'])
+            pagination = self.page.query_selector(SELECTORS['pagination'])
+            if not pagination:
+                return 1
+            
+            page_links = pagination.query_selector_all(SELECTORS['pagination_pages'])
             
             if not page_links:
                 return 1
@@ -138,7 +151,7 @@ class WorkanaScraper:
             page_numbers = []
             for link in page_links:
                 try:
-                    text = link.text.strip()
+                    text = link.inner_text().strip()
                     if text.isdigit():
                         page_numbers.append(int(text))
                 except:
@@ -172,22 +185,10 @@ class WorkanaScraper:
         
         print(f"Found {len(job_elements)} jobs on page")
         
-        # Parse each job (extract HTML immediately to avoid stale element issues)
-        for i, job_element in enumerate(job_elements):
+        # Parse each job (job_elements are already HTML strings)
+        for i, job_html in enumerate(job_elements):
             try:
-                # Get HTML immediately to avoid stale element reference
-                try:
-                    job_html = job_element.get_attribute('outerHTML')
-                except:
-                    # If element is stale, re-find it
-                    job_elements_refresh = self.get_job_elements()
-                    if i < len(job_elements_refresh):
-                        job_element = job_elements_refresh[i]
-                        job_html = job_element.get_attribute('outerHTML')
-                    else:
-                        continue
-                
-                # Parse using HTML string instead of WebElement
+                # Parse using HTML string
                 job_data = parse_job_element_from_html(job_html, self.base_url)
                 
                 # Skip if no ID
@@ -281,7 +282,11 @@ class WorkanaScraper:
     
     def close(self):
         """Close the browser"""
-        if self.driver:
-            self.driver.quit()
-            self.driver = None
+        if self.browser:
+            self.browser.close()
+            self.browser = None
+        if self.playwright:
+            self.playwright.stop()
+            self.playwright = None
+        self.page = None
 

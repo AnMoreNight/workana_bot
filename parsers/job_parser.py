@@ -3,9 +3,6 @@ Parser for extracting job data from HTML elements
 """
 import re
 from typing import Dict, Optional, List
-from selenium.webdriver.remote.webelement import WebElement
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 from bs4 import BeautifulSoup
 from config.selectors import SELECTORS
 from parsers.date_parser import parse_relative_date, extract_job_id_from_url
@@ -56,47 +53,7 @@ def parse_budget(budget_text: str) -> Dict[str, Optional[str]]:
     }
 
 
-def extract_rating(rating_element: Optional[WebElement]) -> Optional[float]:
-    """Extract rating from profile-stars element title attribute"""
-    if not rating_element:
-        return None
-    
-    try:
-        title = rating_element.get_attribute('title')
-        if title:
-            # Extract number from title like "5.00 of 5.00"
-            match = re.search(r'(\d+\.?\d*)', title)
-            if match:
-                return float(match.group(1))
-    except:
-        pass
-    
-    return None
-
-
-def safe_get_text(element: Optional[WebElement], default: str = None) -> Optional[str]:
-    """Safely get text from element"""
-    if element is None:
-        return default
-    try:
-        text = element.text.strip()
-        return text if text else default
-    except:
-        return default
-
-
-def safe_get_attribute(element: Optional[WebElement], attr: str, default: str = None) -> Optional[str]:
-    """Safely get attribute from element"""
-    if element is None:
-        return default
-    try:
-        value = element.get_attribute(attr)
-        return value if value else default
-    except:
-        return default
-
-
-def parse_job_element(job_element: WebElement, base_url: str = "https://www.workana.com") -> Dict:
+def parse_job_element(job_element, base_url: str = "https://www.workana.com") -> Dict:
     """
     Parse a single job element and extract all available data
     Returns dictionary with job data
