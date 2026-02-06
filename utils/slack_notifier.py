@@ -211,8 +211,8 @@ class SlackNotifier:
         # Build text with each field on a new line (all in one block for consistent spacing)
         text_parts = []
         
-        # Title (normal text, same font size)
-        text_parts.append(title)
+        # Title (bold text, same font size)
+        text_parts.append(f"*{title}*")
         
         # Country
         if job.get('client_country'):
